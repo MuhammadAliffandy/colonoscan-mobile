@@ -3,8 +3,15 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:http/http.dart' as http; // Disiapkan untuk nanti
+import 'package:http/http.dart' as http; // Library HTTP aktif
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:http_parser/http_parser.dart';
+
+// --- KONFIGURASI URL API ---
+// GANTI INI SESUAI DEVICE KAMU:
+// 1. Android Emulator: Gunakan "http://10.0.2.2:8000"
+// 2. HP Fisik / iOS Simulator: Gunakan IP Laptop, misal "http://192.168.1.15:8000"
+const String baseUrl = "http://10.0.2.2:8000"; 
 
 void main() {
   runApp(const ColonoMindApp());
@@ -42,74 +49,82 @@ class _HomeScreenState extends State<HomeScreen> {
   final List<Map<String, String>> _chatMessages = [];
   final TextEditingController _chatController = TextEditingController();
 
-  // Konfigurasi URL (Tidak dipakai di Mode Dummy, tapi disiapkan)
-  final String baseUrl = "http://10.0.2.2:8000"; 
-
   // --- FUNGSI PICK IMAGE ---
   Future<void> _pickImage(ImageSource source) async {
     final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: source);
+    // Kompresi sedikit agar upload lebih cepat
+    final pickedFile = await picker.pickImage(source: source, imageQuality: 85);
 
     if (pickedFile != null) {
       setState(() {
         _image = File(pickedFile.path);
-        _analysisResult = null; // Reset hasil lama saat ganti foto
+        _analysisResult = null; // Reset hasil lama
         _chatMessages.clear();
       });
     }
   }
 
-  // --- FUNGSI ANALYZE (MODE DUMMY) ---
+  // --- FUNGSI ANALYZE (REAL API CONNECT) ---
   Future<void> _analyzeImage() async {
     if (_image == null) return;
 
     setState(() => _isLoading = true);
 
-    // [DUMMY] Simulasi loading network 2 detik
-    await Future.delayed(const Duration(seconds: 2));
-
-    // [DUMMY] Data palsu seolah-olah dari Python API
-    String dummyResponse = '''
-    {
-      "prediction": 2,
-      "top5": [
-        ["Vascular Pattern Loss", 0.89],
-        ["Erythema Intensity", 0.76],
-        ["Surface Granularity", 0.65],
-        ["Mucosal Friability", 0.45],
-        ["Vessel Tortuosity", 0.32]
-      ],
-      "all_features": {
-        "Vascular Pattern Loss": 0.89,
-        "Erythema Intensity": 0.76,
-        "Surface Granularity": 0.65,
-        "Mucosal Friability": 0.45,
-        "Vessel Tortuosity": 0.32,
-        "Texture Entropy": 0.25,
-        "Color Saturation": 0.41,
-        "Contrast": 0.12
-      }
-    }
-    ''';
-
     try {
-      setState(() {
-        _analysisResult = json.decode(dummyResponse);
-        
-        // Pesan sambutan otomatis
-        _chatMessages.add({
-          'role': 'assistant',
-          'content': '🎉 **Analysis Complete!**\n\nSaya mendeteksi skor **MES 2 (Moderate Inflammation)**.\n\nFitur dominan terlihat pada hilangnya pola vaskular dan intensitas eritema. Ada yang ingin ditanyakan?'
+      // 1. Buat Request Multipart
+      var uri = Uri.parse("$baseUrl/predict");
+      var request = http.MultipartRequest('POST', uri);
+
+      // 2. Attach File Gambar
+      var pic = await http.MultipartFile.fromPath(
+                                                  "file", 
+                                                  _image!.path,
+                                                  contentType: MediaType('image', 'jpeg') // <--- KITA PAKSA LABELNYA
+                                                );
+      request.files.add(pic);
+
+      // 3. Kirim ke Server
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+
+      // 4. Cek Status Code
+      if (response.statusCode == 200) {
+        var data = json.decode(response.body);
+
+        setState(() {
+          _analysisResult = data;
+          
+          // Ambil data real dari response untuk pesan pembuka
+          int score = data['prediction'];
+          String msg = "🎉 **Analysis Complete!**\n\nI detected an **MES Score of $score** from this image.";
+          
+          if (data['top5'] != null && (data['top5'] as List).isNotEmpty) {
+            var topFeature = data['top5'][0][0];
+            msg += "\n\nThe most dominant feature is **$topFeature**.";
+          }
+
+          _chatMessages.add({
+            'role': 'assistant',
+            'content': msg
+          });
         });
-      });
+      } else {
+        // Error dari Server (misal 400 atau 500)
+        var errorData = json.decode(response.body);
+        _showError("Server Error: ${errorData['detail'] ?? 'Unknown error'}");
+      }
+
     } catch (e) {
-      _showError("Error parsing dummy data: $e");
+      // Error Koneksi (misal server mati atau beda wifi)
+      _showError("Connection Error: Pastikan Server Nyala & IP Benar.\nError: $e");
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
-  // --- FUNGSI CHAT (MODE DUMMY) ---
+  // --- FUNGSI CHAT (LOGIKA LOKAL - SEMENTARA) ---
+  // Karena API kamu belum punya endpoint /chat, kita pakai logika di HP dulu
+  // tapi berdasarkan DATA ASLI hasil analisis API.
   Future<void> _sendMessage() async {
     if (_chatController.text.isEmpty) return;
 
@@ -118,24 +133,31 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _chatMessages.add({'role': 'user', 'content': userText});
       _chatController.clear();
-      _isLoading = true; // Loading kecil di chat
+      _isLoading = true; 
     });
 
-    // [DUMMY] Simulasi mikir 1 detik
-    await Future.delayed(const Duration(seconds: 1));
+    await Future.delayed(const Duration(milliseconds: 800)); // Simulasi mikir sebentar
 
     String dummyAnswer = "";
     String lowerText = userText.toLowerCase();
 
-    // Logika chatbot sederhana untuk testing
-    if (lowerText.contains("score") || lowerText.contains("skor") || lowerText.contains("mes")) {
-      dummyAnswer = "📊 **Skor MES: 2**\n\nIni menunjukkan peradangan tingkat sedang (Moderate). Ditandai dengan kemerahan yang nyata (erythema) dan hilangnya pola pembuluh darah.";
-    } else if (lowerText.contains("fitur") || lowerText.contains("feature")) {
-      dummyAnswer = "🔍 **Fitur Utama:**\n\nSistem mendeteksi **Vascular Pattern Loss (0.89)** sebagai fitur paling dominan, diikuti oleh **Erythema Intensity (0.76)**.";
-    } else if (lowerText.contains("halo") || lowerText.contains("hi")) {
-      dummyAnswer = "Halo! 👋 Saya ColonoTalk (Mode Demo). Silakan tanya tentang hasil analisis di atas.";
+    // Menggunakan Data Asli dari _analysisResult jika ada
+    if (_analysisResult != null) {
+      int score = _analysisResult!['prediction'];
+      
+      if (lowerText.contains("score") || lowerText.contains("skor")) {
+        dummyAnswer = "📊 **MES Score: $score**\n\nBased on the AI model analysis of the image you uploaded.";
+      } else if (lowerText.contains("fitur") || lowerText.contains("feature")) {
+        var topFeatures = _analysisResult!['top5'];
+        dummyAnswer = "🔍 **Top Features Detected:**\n\n";
+        for (var f in topFeatures) {
+          dummyAnswer += "- **${f[0]}**: ${(f[1] * 100).toStringAsFixed(1)}%\n";
+        }
+      } else {
+        dummyAnswer = "I recorded a prediction score of **MES $score**. Currently, I can only answer questions related to these visual prediction results.";
+      }
     } else {
-      dummyAnswer = "Ini adalah respon simulasi. Pertanyaan Anda: _\"$userText\"_ akan dijawab oleh Llama-2 dengan konteks medis di versi Live nanti. 👍";
+      dummyAnswer = "Please upload and analyze an image first.";
     }
 
     setState(() {
@@ -145,10 +167,16 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message), 
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 4),
+      )
+    );
   }
 
-  // --- UI WIDGETS ---
+  // --- UI WIDGETS (SAMA SEPERTI SEBELUMNYA) ---
 
   @override
   Widget build(BuildContext context) {
@@ -165,7 +193,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     _buildUploadSection(),
                     
-                    // Loading Spinner Utama
                     if (_isLoading && _analysisResult == null) 
                       const Padding(
                         padding: EdgeInsets.all(40), 
@@ -173,12 +200,11 @@ class _HomeScreenState extends State<HomeScreen> {
                           children: [
                             CircularProgressIndicator(),
                             SizedBox(height: 10),
-                            Text("Analyzing image...", style: TextStyle(color: Colors.grey)),
+                            Text("Uploading & Analyzing...", style: TextStyle(color: Colors.grey)),
                           ],
                         )
                       ),
                     
-                    // Hasil Analisis
                     if (_analysisResult != null) ...[
                       const SizedBox(height: 20),
                       _buildPredictionCard(),
@@ -222,7 +248,7 @@ class _HomeScreenState extends State<HomeScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text("ColonoMind", style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
-              Text("AI-Powered Analysis", style: GoogleFonts.inter(fontSize: 12, color: Colors.white70)),
+              Text("AI-Powered Analysis (Local)", style: GoogleFonts.inter(fontSize: 12, color: Colors.white70)),
             ],
           )
         ],
@@ -334,7 +360,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildPredictionCard() {
-    int score = _analysisResult!['prediction'];
+    // Handling null safety, default to 0
+    int score = _analysisResult?['prediction'] ?? 0;
     Color cardColor;
     String status;
     String emoji;
@@ -394,6 +421,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildFeatureGrid() {
+    if (_analysisResult == null || _analysisResult!['all_features'] == null) return const SizedBox();
+
     Map<String, dynamic> features = _analysisResult!['all_features'];
     var topFeatures = features.entries.toList()..sort((a, b) => (b.value as double).abs().compareTo((a.value as double).abs()));
     var displayFeatures = topFeatures.take(4).toList();
@@ -403,7 +432,7 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Text("🔬 Key Features Detected", style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.black87)),
+          child: Text("🔬 Key Features Detected (Real Data)", style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.black87)),
         ),
         const SizedBox(height: 10),
         GridView.builder(
