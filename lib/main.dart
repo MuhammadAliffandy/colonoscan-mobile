@@ -1,11 +1,14 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http; // Library HTTP aktif
+import 'package:image/image.dart' as img;
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:http_parser/http_parser.dart';
+import 'package:path_provider/path_provider.dart';
 
 // --- KONFIGURASI URL API ---
 // GANTI INI SESUAI DEVICE KAMU:
@@ -52,16 +55,72 @@ class _HomeScreenState extends State<HomeScreen> {
   // --- FUNGSI PICK IMAGE ---
   Future<void> _pickImage(ImageSource source) async {
     final picker = ImagePicker();
-    // Kompresi sedikit agar upload lebih cepat
     final pickedFile = await picker.pickImage(source: source, imageQuality: 85);
 
     if (pickedFile != null) {
+      // 1. Kasih loading sebentar biar user tau ada proses
+      setState(() => _isLoading = true);
+
+      // 2. PROSES GAMBAR (CROP & ZOOM)
+      // Ini langkah yang sebelumnya hilang!
+      File original = File(pickedFile.path);
+      File processed = await preprocessImage(original); 
+
+      // 3. Masukkan gambar yang SUDAH DI-PROCESS ke state
       setState(() {
-        _image = File(pickedFile.path);
-        _analysisResult = null; // Reset hasil lama
+        _image = processed; // Pakai file yang sudah di-zoom
+        _analysisResult = null; 
         _chatMessages.clear();
+        _isLoading = false; // Matikan loading
       });
     }
+  }
+
+  Future<File> preprocessImage(File originalFile) async {
+    // 1. Baca bytes dari file asli
+    final bytes = await originalFile.readAsBytes();
+    
+    // 2. Decode gambar menjadi objek yang bisa diedit
+    img.Image? src = img.decodeImage(bytes);
+    
+    if (src == null) return originalFile; // Safety check
+
+    // --- LOGIKA PYTHON: crop_center_zoom (ZOOM_LEVEL = 0.75) ---
+    double zoomFactor = 0.75;
+    
+    // Hitung dimensi terkecil (min_dim)
+    int minDim = min(src.width, src.height);
+    
+    // Hitung ukuran crop (crop_size)
+    int cropSize = (minDim * zoomFactor).toInt();
+    
+    // Hitung titik tengah (left, top)
+    int x = (src.width - cropSize) ~/ 2;
+    int y = (src.height - cropSize) ~/ 2;
+
+    // Lakukan Cropping
+    img.Image cropped = img.copyCrop(
+      src, 
+      x: x, 
+      y: y, 
+      width: cropSize, 
+      height: cropSize
+    );
+
+    // 3. Resize kembali ke ukuran standar (opsional, misal 256x256 agar ringan)
+    // Kalau mau persis pixelnya, bisa skip resize ini. 
+    // Tapi biar upload cepat, kita resize ke 256x256 (sesuai IMG_SIZE python kamu).
+    img.Image resized = img.copyResize(cropped, width: 256, height: 256);
+
+    // 4. Simpan hasil crop ke file baru (Format JPG/PNG)
+    final tempDir = await getTemporaryDirectory();
+    final savePath = '${tempDir.path}/processed_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    final processedFile = File(savePath);
+    
+    // Encode ke JPG (kualitas 90)
+    await processedFile.writeAsBytes(img.encodeJpg(resized, quality: 90));
+
+    return processedFile;
   }
 
   // --- FUNGSI ANALYZE (REAL API CONNECT) ---
@@ -239,18 +298,30 @@ class _HomeScreenState extends State<HomeScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(12)),
-            child: const Icon(Icons.medical_services_outlined, color: Colors.white, size: 28),
+            padding: const EdgeInsets.all(4),
+            child: Image.asset(
+              'assets/images/colon.png', // Sesuai nama file
+              width: 50,
+              height: 50,
+            ),
           ),
           const SizedBox(width: 15),
           Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Text("ColonoMind", style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
               Text("AI-Powered Analysis (Local)", style: GoogleFonts.inter(fontSize: 12, color: Colors.white70)),
             ],
-          )
+          ),
+          const SizedBox(width: 15),
+                   Container(
+            padding: const EdgeInsets.all(4),
+            child: Image.asset(
+              'assets/images/endoscope.png', // Sesuai nama file
+              width: 50,
+              height: 50,
+            ),
+          ),
         ],
       ),
     );
@@ -265,14 +336,31 @@ class _HomeScreenState extends State<HomeScreen> {
         padding: const EdgeInsets.all(20.0),
         child: Column(
           children: [
+            // --- LOGIKA UTAMA: JIKA ADA GAMBAR TAMPILKAN BULAT, JIKA TIDAK TAMPILKAN PLACEHOLDER ---
             if (_image != null)
+              // --- TAMPILAN BULAT (ENDOSKOPI STYLE) ---
               Stack(
                 alignment: Alignment.topRight,
                 children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(15),
-                    child: Image.file(_image!, height: 220, width: double.infinity, fit: BoxFit.cover),
+                  Container(
+                    width: double.infinity,
+                    height: 250,
+                    decoration: BoxDecoration(
+                      color: Colors.black, // Background hitam ala medis
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    child: Center(
+                      child: ClipOval( // Masking Lingkaran
+                        child: Image.file(
+                          _image!, 
+                          height: 220, 
+                          width: 220, 
+                          fit: BoxFit.cover, 
+                        ),
+                      ),
+                    ),
                   ),
+                  // Tombol Hapus (X)
                   IconButton(
                     onPressed: () => setState(() => _image = null),
                     icon: const CircleAvatar(backgroundColor: Colors.white, child: Icon(Icons.close, color: Colors.red)),
@@ -280,6 +368,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               )
             else
+              // --- TAMPILAN PLACEHOLDER (TAP TO UPLOAD) ---
               GestureDetector(
                 onTap: () => _pickImage(ImageSource.gallery),
                 child: Container(
@@ -300,7 +389,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
+            
             const SizedBox(height: 20),
+            
+            // --- TOMBOL PILIHAN (KAMERA / GALERI) ---
             Row(
               children: [
                 Expanded(
@@ -334,6 +426,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ],
             ),
+            
+            // --- TOMBOL START ANALYSIS ---
             if (_image != null && _analysisResult == null && !_isLoading)
               Padding(
                 padding: const EdgeInsets.only(top: 15),
