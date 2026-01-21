@@ -10,11 +10,9 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:http_parser/http_parser.dart';
 import 'package:path_provider/path_provider.dart';
 
-// --- KONFIGURASI URL API ---
-// GANTI INI SESUAI DEVICE KAMU:
-// 1. Android Emulator: Gunakan "http://10.0.2.2:8000"
-// 2. HP Fisik / iOS Simulator: Gunakan IP Laptop, misal "http://192.168.1.15:8000"
-const String baseUrl = "http://10.0.2.2:8000"; 
+//10.0.2.2 - android
+//127.0.0.1 - ios
+const String baseUrl = "http://127.0.0.1:8000"; 
 
 void main() {
   runApp(const ColonoMindApp());
@@ -58,15 +56,13 @@ class _HomeScreenState extends State<HomeScreen> {
     final pickedFile = await picker.pickImage(source: source, imageQuality: 85);
 
     if (pickedFile != null) {
-      // 1. Kasih loading sebentar biar user tau ada proses
+
       setState(() => _isLoading = true);
 
-      // 2. PROSES GAMBAR (CROP & ZOOM)
-      // Ini langkah yang sebelumnya hilang!
       File original = File(pickedFile.path);
       File processed = await preprocessImage(original); 
 
-      // 3. Masukkan gambar yang SUDAH DI-PROCESS ke state
+
       setState(() {
         _image = processed; // Pakai file yang sudah di-zoom
         _analysisResult = null; 
@@ -77,24 +73,22 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<File> preprocessImage(File originalFile) async {
-    // 1. Baca bytes dari file asli
+
     final bytes = await originalFile.readAsBytes();
     
-    // 2. Decode gambar menjadi objek yang bisa diedit
+
     img.Image? src = img.decodeImage(bytes);
     
     if (src == null) return originalFile; // Safety check
 
-    // --- LOGIKA PYTHON: crop_center_zoom (ZOOM_LEVEL = 0.75) ---
+
     double zoomFactor = 0.75;
     
     // Hitung dimensi terkecil (min_dim)
     int minDim = min(src.width, src.height);
     
-    // Hitung ukuran crop (crop_size)
     int cropSize = (minDim * zoomFactor).toInt();
     
-    // Hitung titik tengah (left, top)
     int x = (src.width - cropSize) ~/ 2;
     int y = (src.height - cropSize) ~/ 2;
 
@@ -107,23 +101,19 @@ class _HomeScreenState extends State<HomeScreen> {
       height: cropSize
     );
 
-    // 3. Resize kembali ke ukuran standar (opsional, misal 256x256 agar ringan)
-    // Kalau mau persis pixelnya, bisa skip resize ini. 
-    // Tapi biar upload cepat, kita resize ke 256x256 (sesuai IMG_SIZE python kamu).
+  
     img.Image resized = img.copyResize(cropped, width: 256, height: 256);
 
-    // 4. Simpan hasil crop ke file baru (Format JPG/PNG)
     final tempDir = await getTemporaryDirectory();
     final savePath = '${tempDir.path}/processed_${DateTime.now().millisecondsSinceEpoch}.jpg';
     final processedFile = File(savePath);
     
-    // Encode ke JPG (kualitas 90)
     await processedFile.writeAsBytes(img.encodeJpg(resized, quality: 90));
 
     return processedFile;
   }
 
-  // --- FUNGSI ANALYZE (REAL API CONNECT) ---
+
   Future<void> _analyzeImage() async {
     if (_image == null) return;
 
@@ -181,10 +171,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // --- FUNGSI CHAT (LOGIKA LOKAL - SEMENTARA) ---
-  // Karena API kamu belum punya endpoint /chat, kita pakai logika di HP dulu
-  // tapi berdasarkan DATA ASLI hasil analisis API.
-  // --- FUNGSI CHAT (CONNECTED TO API /chat) ---
+
   Future<void> _sendMessage() async {
     if (_chatController.text.isEmpty) return;
 
@@ -198,13 +185,9 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
-      // 2. Siapkan Konteks Data
-      // Kita kirim hasil analisis (_analysisResult) ke API
-      // supaya AI tau "Gambar apa yang sedang dibahas?"
+
       Map<String, dynamic> contextData = _analysisResult ?? {};
 
-      // 3. Kirim Request ke API
-      // LLM butuh mikir, jadi timeout kita set agak lama (misal 30-60 detik)
       final response = await http.post(
         Uri.parse("$baseUrl/chat"),
         headers: {"Content-Type": "application/json"},
