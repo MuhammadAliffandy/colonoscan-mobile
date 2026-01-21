@@ -184,45 +184,68 @@ class _HomeScreenState extends State<HomeScreen> {
   // --- FUNGSI CHAT (LOGIKA LOKAL - SEMENTARA) ---
   // Karena API kamu belum punya endpoint /chat, kita pakai logika di HP dulu
   // tapi berdasarkan DATA ASLI hasil analisis API.
+  // --- FUNGSI CHAT (CONNECTED TO API /chat) ---
   Future<void> _sendMessage() async {
     if (_chatController.text.isEmpty) return;
 
     String userText = _chatController.text;
     
+    // 1. Tampilkan pesan User dulu di layar (biar responsif)
     setState(() {
       _chatMessages.add({'role': 'user', 'content': userText});
       _chatController.clear();
-      _isLoading = true; 
+      _isLoading = true; // Munculkan loading chat
     });
 
-    await Future.delayed(const Duration(milliseconds: 800)); // Simulasi mikir sebentar
+    try {
+      // 2. Siapkan Konteks Data
+      // Kita kirim hasil analisis (_analysisResult) ke API
+      // supaya AI tau "Gambar apa yang sedang dibahas?"
+      Map<String, dynamic> contextData = _analysisResult ?? {};
 
-    String dummyAnswer = "";
-    String lowerText = userText.toLowerCase();
+      // 3. Kirim Request ke API
+      // LLM butuh mikir, jadi timeout kita set agak lama (misal 30-60 detik)
+      final response = await http.post(
+        Uri.parse("$baseUrl/chat"),
+        headers: {"Content-Type": "application/json"},
+        body: json.encode({
+          "message": userText,
+          "context_data": contextData
+        }),
+      ).timeout(const Duration(seconds: 60)); 
 
-    // Menggunakan Data Asli dari _analysisResult jika ada
-    if (_analysisResult != null) {
-      int score = _analysisResult!['prediction'];
-      
-      if (lowerText.contains("score") || lowerText.contains("skor")) {
-        dummyAnswer = "📊 **MES Score: $score**\n\nBased on the AI model analysis of the image you uploaded.";
-      } else if (lowerText.contains("fitur") || lowerText.contains("feature")) {
-        var topFeatures = _analysisResult!['top5'];
-        dummyAnswer = "🔍 **Top Features Detected:**\n\n";
-        for (var f in topFeatures) {
-          dummyAnswer += "- **${f[0]}**: ${(f[1] * 100).toStringAsFixed(1)}%\n";
-        }
+      // 4. Proses Jawaban Server
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        String aiReply = data['reply']; // Ambil jawaban dari API
+
+        setState(() {
+          _chatMessages.add({'role': 'assistant', 'content': aiReply});
+        });
       } else {
-        dummyAnswer = "I recorded a prediction score of **MES $score**. Currently, I can only answer questions related to these visual prediction results.";
+        // Kalau server error (misal model belum load)
+        setState(() {
+          _chatMessages.add({
+            'role': 'assistant', 
+            'content': "⚠️ **Server Error:** Failed get response from ColonoTalk."
+          });
+        });
       }
-    } else {
-      dummyAnswer = "Please upload and analyze an image first.";
-    }
 
-    setState(() {
-      _chatMessages.add({'role': 'assistant', 'content': dummyAnswer});
-      _isLoading = false;
-    });
+    } catch (e) {
+      // Kalau koneksi putus
+      setState(() {
+        _chatMessages.add({
+          'role': 'assistant', 
+          'content': "⚠️ **Connection Error:** Cant connect the server.\n\nDetail: $e"
+        });
+      });
+    } finally {
+      // Matikan loading apapun hasilnya
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   void _showError(String message) {
@@ -346,7 +369,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     width: double.infinity,
                     height: 250,
                     decoration: BoxDecoration(
-                      color: Colors.black, // Background hitam ala medis
+                      color: Colors.grey.withOpacity(0.1), // Background hitam ala medis
                       borderRadius: BorderRadius.circular(15),
                     ),
                     child: Center(
