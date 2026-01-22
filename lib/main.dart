@@ -10,9 +10,8 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:http_parser/http_parser.dart';
 import 'package:path_provider/path_provider.dart';
 
-//10.0.2.2 - android
-//127.0.0.1 - ios
-const String baseUrl = "http://127.0.0.1:8000"; 
+
+const String baseUrl = "https://colonomind-335955344592.asia-southeast1.run.app"; 
 
 void main() {
   runApp(const ColonoMindApp());
