@@ -6,7 +6,7 @@ import 'package:http_parser/http_parser.dart'; // Untuk MediaType
 
 class ApiService {
   // Ganti sesuai IP
-  static const String baseUrl = "http://127.0.0.1:8000"; 
+  static const String baseUrl = "https://colonomind-335955344592.asia-southeast1.run.app"; 
 
   // --- HELPER: AMBIL TOKEN ---
   static Future<String?> _getToken() async {
