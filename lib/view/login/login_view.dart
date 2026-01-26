@@ -1,0 +1,97 @@
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:google_fonts/google_fonts.dart';
+import '../../api.dart';
+import '../../view/dashboard/dashboard_view.dart';
+import '../../view/regis/regis_view.dart';
+
+class LoginView extends StatefulWidget {
+  const LoginView({super.key});
+
+  @override
+  State<LoginView> createState() => _LoginViewState();
+}
+
+class _LoginViewState extends State<LoginView> {
+  final _emailController = TextEditingController();
+  final _passController = TextEditingController();
+  bool _isLoading = false;
+
+  void _doLogin() async {
+   setState(() => _isLoading = true);
+    
+    final result = await ApiService.login(_emailController.text, _passController.text);
+    
+    setState(() => _isLoading = false);
+
+    if (result.containsKey('token')) {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      
+      await prefs.setString('token', result['token']);
+      
+      if (result.containsKey('user')) {
+        await prefs.setString('full_name', result['user']['full_name'] ?? 'User');
+        await prefs.setString('email', result['user']['email'] ?? 'user@email.com');
+      }
+      
+      Navigator.pushReplacement(
+        context, MaterialPageRoute(builder: (context) => const DashboardView())
+      );
+    }else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result['msg'] ?? "Login Failed !!"), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Icon(Icons.medical_services_outlined, size: 80, color: Color(0xFF667eea)),
+            const SizedBox(height: 20),
+            Text(
+              "Welcome Back!", 
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(fontSize: 28, fontWeight: FontWeight.bold)
+            ),
+            const SizedBox(height: 40),
+            TextField(
+              controller: _emailController,
+              decoration: const InputDecoration(labelText: "Email", border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _passController,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: "Password", border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 24),
+            _isLoading 
+              ? const Center(child: CircularProgressIndicator())
+              : ElevatedButton(
+                  onPressed: _doLogin,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF667eea),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16)
+                  ),
+                  child: const Text("LOGIN"),
+                ),
+            TextButton(
+              onPressed: () {
+                Navigator.push(context, MaterialPageRoute(builder: (context) =>  RegisterView()));
+              },
+              child: const Text("Don't have an account? Register"),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+}
