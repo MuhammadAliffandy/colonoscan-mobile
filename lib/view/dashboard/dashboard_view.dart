@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../history/history_view.dart';
 import '../settings/settings_view.dart';
 import '../../api.dart';
+import '../../components/mes_mood/mes_mood_meter.dart';
 
 
 class DashboardView extends StatefulWidget {
@@ -188,13 +189,24 @@ class _DashboardViewState extends State<DashboardView> {
                         child: CircularProgressIndicator()
                       ),
                     if (_analysisResult != null) ...[
-                      const SizedBox(height: 20),
-                      _buildPredictionCard(),
-                      const SizedBox(height: 16),
-                      _buildFeatureGrid(),
-                      const SizedBox(height: 16),
-                      _buildChatSection(),
-                    ]
+                          const SizedBox(height: 10),
+                          
+                          // 🔥 1. TAMBAHAN BARU: INTERACTIVE MOOD METER 🔥
+                          // Kita taruh container biar ada background-nya sedikit atau biarkan transparan
+                          Container(
+                            padding: const EdgeInsets.symmetric(vertical: 20),
+                            child: MesMoodMeter(
+                              score: _analysisResult!['prediction'] ?? 0, 
+                              size: 70
+                            ),
+                          ),
+                          
+              
+                 
+                          _buildFeatureGrid(),
+                          const SizedBox(height: 16),
+                          _buildChatSection(),
+                        ]
                   ],
                 ),
               ),
