@@ -1,20 +1,18 @@
 import 'dart:convert';
-import 'dart:io'; // Untuk File
+import 'dart:io'; 
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http_parser/http_parser.dart'; // Untuk MediaType
+import 'package:http_parser/http_parser.dart'; 
 
 class ApiService {
-  // Ganti sesuai IP
+
   static const String baseUrl = "https://colonomind-335955344592.asia-southeast1.run.app"; 
 
-  // --- HELPER: AMBIL TOKEN ---
   static Future<String?> _getToken() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     return prefs.getString('token');
   }
 
-  // --- AUTH (SAMA SEPERTI SEBELUMNYA) ---
   static Future<Map<String, dynamic>> login(String email, String password) async {
     final response = await http.post(
       Uri.parse('$baseUrl/auth/login'),
@@ -33,12 +31,14 @@ class ApiService {
     return jsonDecode(response.body);
   }
 
-  static Future<List<dynamic>> getHistory() async {
+// --- GET HISTORY (With Pagination) ---
+  static Future<List<dynamic>> getHistory({int page = 1, int limit = 10}) async {
     String? token = await _getToken();
     if (token == null) return [];
 
     final response = await http.get(
-      Uri.parse('$baseUrl/history'),
+      // Kirim parameter page & limit ke backend
+      Uri.parse('$baseUrl/history?page=$page&limit=$limit'),
       headers: {
         "Content-Type": "application/json",
         "Authorization": "Bearer $token",
@@ -48,8 +48,21 @@ class ApiService {
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
-      throw Exception('Gagal load history');
+      throw Exception('Failed to load history');
     }
+  }
+
+  // --- DELETE ITEM ---
+  static Future<bool> deleteHistoryItem(String historyId) async {
+    String? token = await _getToken();
+    if (token == null) return false;
+
+    final response = await http.delete(
+      Uri.parse('$baseUrl/history/$historyId'),
+      headers: {"Authorization": "Bearer $token"},
+    );
+
+    return response.statusCode == 200;
   }
 
   // --- NEW: PREDICT IMAGE (MOBILE) ---
@@ -112,4 +125,36 @@ class ApiService {
       throw Exception("Chat Error: $e");
     }
   }
+
+  static Future<List<dynamic>> getAllUsers() async {
+    String? token = await _getToken();
+    if (token == null) return [];
+
+    final response = await http.get(
+      Uri.parse('$baseUrl/admin/users'),
+      headers: {"Authorization": "Bearer $token"},
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+    return [];
+  }
+
+  // --- ADMIN: GET HISTORY USER LAIN ---
+  static Future<List<dynamic>> getAdminUserHistory(String userId) async {
+    String? token = await _getToken();
+    if (token == null) return [];
+
+    final response = await http.get(
+      Uri.parse('$baseUrl/admin/users/$userId/history'),
+      headers: {"Authorization": "Bearer $token"},
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+    return [];
+  }
+
 }

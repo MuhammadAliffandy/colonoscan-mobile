@@ -1,11 +1,13 @@
 import 'dart:io';
 import 'dart:math';
+import 'package:ColonoMind/view/admin/admin_user_view.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image/image.dart' as img;
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../history/history_view.dart';
 import '../settings/settings_view.dart';
 import '../../api.dart';
@@ -21,11 +23,24 @@ class DashboardView extends StatefulWidget {
 class _DashboardViewState extends State<DashboardView> {
   File? _image;          
   File? _originalImage;  
-  
+  String _userRole = 'user'; 
   bool _isLoading = false;
   Map<String, dynamic>? _analysisResult;
   final List<Map<String, String>> _chatMessages = [];
   final TextEditingController _chatController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _checkRole();
+  }
+
+  Future<void> _checkRole() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _userRole = prefs.getString('role') ?? 'user';
+    });
+  }
 
   // --- FUNGSI PICK IMAGE ---
   Future<void> _pickImage(ImageSource source) async {
@@ -140,12 +155,13 @@ class _DashboardViewState extends State<DashboardView> {
   }
 
   void _onNavBarTapped(int index) {
-    if (index == 0) {
-    } else if (index == 1) {
-      Navigator.push(context, MaterialPageRoute(builder: (context) => HistoryView()));
-    } else if (index == 2) {
-      Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsView()));
-    }
+     if (index == 0) return; 
+     if (index == 1) Navigator.push(context, MaterialPageRoute(builder: (_) => HistoryView()));
+     if (index == 2) Navigator.push(context, MaterialPageRoute(builder: (_) => SettingsView()));
+     
+     if (index == 3 && _userRole == 'admin') {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminUserListView()));
+     }
   }
 
   void _showError(String message) {
@@ -193,10 +209,15 @@ class _DashboardViewState extends State<DashboardView> {
         unselectedItemColor: Colors.grey,
         showUnselectedLabels: true,
         type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: "Home"),
-          BottomNavigationBarItem(icon: Icon(Icons.history_rounded), label: "History"),
-          BottomNavigationBarItem(icon: Icon(Icons.settings_rounded), label: "Settings"),
+        items: [
+          const BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: "Home"),
+          const BottomNavigationBarItem(icon: Icon(Icons.history_rounded), label: "History"),
+          const BottomNavigationBarItem(icon: Icon(Icons.settings_rounded), label: "Settings"),
+          if (_userRole == 'admin')
+            const BottomNavigationBarItem(
+              icon: Icon(Icons.admin_panel_settings_outlined), 
+              label: "Admin"
+          ),
         ],
       ),
     );

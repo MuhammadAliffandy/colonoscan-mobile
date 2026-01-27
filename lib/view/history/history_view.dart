@@ -10,15 +10,123 @@ class HistoryView extends StatefulWidget {
 }
 
 class _HistoryViewState extends State<HistoryView> {
-  late Future<List<dynamic>> _historyFuture;
+  // State Variables
+  List<dynamic> _historyList = [];
+  bool _isLoading = false;      // Loading awal / refresh
+  bool _isLoadingMore = false;  // Loading saat scroll bawah
+  int _currentPage = 1;
+  final int _limit = 10;
+  bool _hasMore = true;         // Cek apakah data masih ada di server?
+  
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
-    _historyFuture = ApiService.getHistory();
+    _fetchHistory(isRefresh: true);
+
+    // Listener untuk deteksi scroll mentok bawah
+    _scrollController.addListener(() {
+      if (_scrollController.position.pixels == _scrollController.position.maxScrollExtent) {
+        // User sudah scroll sampai bawah -> Load Page berikutnya
+        _loadMoreData();
+      }
+    });
   }
 
-  // Helper untuk mengubah skor angka jadi Label Teks
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  // Fungsi Fetch Data Utama
+  Future<void> _fetchHistory({bool isRefresh = false}) async {
+    if (isRefresh) {
+      setState(() {
+        _isLoading = true;
+        _currentPage = 1;
+        _historyList.clear();
+        _hasMore = true;
+      });
+    }
+
+    try {
+      // Panggil API dengan Page saat ini
+      List<dynamic> newItems = await ApiService.getHistory(page: _currentPage, limit: _limit);
+
+      setState(() {
+        if (newItems.length < _limit) {
+          _hasMore = false; // Data habis, server kirim kurang dari 10
+        }
+        _historyList.addAll(newItems);
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+    }
+  }
+
+  // Fungsi Load More (Pagination)
+  Future<void> _loadMoreData() async {
+    if (_isLoadingMore || !_hasMore) return;
+
+    setState(() {
+      _isLoadingMore = true;
+      _currentPage++; // Naikkan halaman
+    });
+
+    try {
+      List<dynamic> newItems = await ApiService.getHistory(page: _currentPage, limit: _limit);
+      setState(() {
+        if (newItems.length < _limit) _hasMore = false;
+        _historyList.addAll(newItems);
+        _isLoadingMore = false;
+      });
+    } catch (e) {
+      setState(() => _isLoadingMore = false);
+    }
+  }
+
+  // Fungsi Delete
+  Future<void> _deleteItem(int index) async {
+    final item = _historyList[index];
+    final String id = item['id'];
+
+    // Konfirmasi Dialog
+    bool? confirm = await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Delete Analysis?"),
+        content: const Text("This action cannot be undone. The image and data will be removed."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true), 
+            child: const Text("Delete", style: TextStyle(color: Colors.red))
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      // Hapus di Server
+      bool success = await ApiService.deleteHistoryItem(id);
+      
+      if (success) {
+        // Hapus di UI (Tanpa Refresh biar smooth)
+        setState(() {
+          _historyList.removeAt(index);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Item deleted.")));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to delete.")));
+      }
+    }
+  }
+
+  // Helper Warna & Label (Sama seperti sebelumnya)
   String _getLabel(int score) {
     switch (score) {
       case 0: return "Normal";
@@ -29,7 +137,6 @@ class _HistoryViewState extends State<HistoryView> {
     }
   }
 
-  // Helper untuk warna status
   Color _getStatusColor(int score) {
     if (score == 0) return Colors.green;
     if (score == 1) return Colors.amber.shade700;
@@ -47,128 +154,95 @@ class _HistoryViewState extends State<HistoryView> {
         elevation: 0,
       ),
       backgroundColor: const Color(0xFFf8f9fa),
-      body: FutureBuilder<List<dynamic>>(
-        future: _historyFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          } else if (snapshot.hasError) {
-            return Center(child: Text("Error: ${snapshot.error}"));
-          } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.history, size: 60, color: Colors.grey),
-                  SizedBox(height: 10),
-                  Text("No history yet.", style: TextStyle(color: Colors.grey)),
-                ],
-              ),
-            );
-          }
+      body: _isLoading 
+        ? const Center(child: CircularProgressIndicator()) 
+        : _historyList.isEmpty 
+          ? const Center(child: Text("No history yet.", style: TextStyle(color: Colors.grey)))
+          : RefreshIndicator(
+              onRefresh: () => _fetchHistory(isRefresh: true),
+              child: ListView.builder(
+                controller: _scrollController, // Pasang Controller
+                padding: const EdgeInsets.all(16),
+                // +1 item untuk indikator loading di paling bawah
+                itemCount: _historyList.length + (_hasMore ? 1 : 0),
+                itemBuilder: (context, index) {
+                  
+                  // Jika ini item terakhir dan masih ada data -> Tampilkan Loading kecil
+                  if (index == _historyList.length) {
+                    return const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator.adaptive()));
+                  }
 
-          final history = snapshot.data!;
-          
-          // --- LIST VIEW ---
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: history.length,
-            itemBuilder: (context, index) {
-              // Balik urutan biar yang terbaru di atas (history.length - 1 - index)
-              // Atau sorting di backend. Kita anggap backend kirim urut.
-              // Kita pakai reversed index manual kalau backend append ke bawah:
-              final item = history[history.length - 1 - index]; 
-              
-              final int score = item['score'] is int ? item['score'] : int.tryParse(item['score'].toString()) ?? 0;
-              final String imageUrl = item['image_url'];
-              
-              // Formatting Tanggal Sederhana (String slicing)
-              // backend kirim: "2026-01-26 10:00:00.123" -> ambil 16 karakter awal
-              String dateStr = item['date'].toString();
-              if (dateStr.length > 16) dateStr = dateStr.substring(0, 16);
+                  final item = _historyList[index];
+                  final int score = item['score'] is int ? item['score'] : int.tryParse(item['score'].toString()) ?? 0;
+                  
+                  // Date Parsing
+                  String dateStr = item['date'].toString();
+                  try {
+                    // Biar formatnya lebih cantik (Optional)
+                    DateTime dt = DateTime.parse(dateStr);
+                    dateStr = "${dt.day}/${dt.month}/${dt.year} ${dt.hour}:${dt.minute}";
+                  } catch (_) {
+                    if (dateStr.length > 16) dateStr = dateStr.substring(0, 16);
+                  }
 
-              return Container(
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    // --- 1. GAMBAR (Thumbnail) ---
-                    ClipRRect(
-                      borderRadius: const BorderRadius.only(topLeft: Radius.circular(16), bottomLeft: Radius.circular(16)),
-                      child: Image.network(
-                        imageUrl,
-                        width: 100,
-                        height: 100,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            width: 100, height: 100, color: Colors.grey[200],
-                            child: const Icon(Icons.broken_image, color: Colors.grey),
-                          );
-                        },
-                      ),
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))
+                      ],
                     ),
-                    
-                    // --- 2. INFO TEXT ---
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.all(12.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    child: Row(
+                      children: [
+                        // --- 1. GAMBAR ---
+                        ClipRRect(
+                          borderRadius: const BorderRadius.only(topLeft: Radius.circular(16), bottomLeft: Radius.circular(16)),
+                          child: Image.network(
+                            item['image_url'],
+                            width: 100, height: 100, fit: BoxFit.cover,
+                            errorBuilder: (_,__,___) => Container(width: 100, height: 100, color: Colors.grey[200], child: const Icon(Icons.broken_image, color: Colors.grey)),
+                          ),
+                        ),
+                        
+                        // --- 2. INFO TEXT ---
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.all(12.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: _getStatusColor(score).withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    "MES $score",
-                                    style: TextStyle(
-                                      color: _getStatusColor(score),
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 12
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(color: _getStatusColor(score).withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                                      child: Text("MES $score", style: TextStyle(color: _getStatusColor(score), fontWeight: FontWeight.bold, fontSize: 12)),
                                     ),
-                                  ),
+                                    Text(dateStr, style: GoogleFonts.inter(fontSize: 10, color: Colors.grey)),
+                                  ],
                                 ),
-                                Text(
-                                  dateStr,
-                                  style: GoogleFonts.inter(fontSize: 10, color: Colors.grey),
-                                ),
+                                const SizedBox(height: 8),
+                                Text(_getLabel(score), style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
                               ],
                             ),
-                            const SizedBox(height: 8),
-                            Text(
-                              _getLabel(score),
-                              style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.bold),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              "Confidence: High", // Nanti bisa ambil dari DB kalau disimpan
-                              style: GoogleFonts.inter(fontSize: 12, color: Colors.grey),
-                            ),
-                          ],
+                          ),
                         ),
-                      ),
+
+                        // --- 3. TOMBOL DELETE (TRASH) ---
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
+                          onPressed: () => _deleteItem(index), // Panggil fungsi delete
+                        ),
+                        const SizedBox(width: 4),
+                      ],
                     ),
-                  ],
-                ),
-              );
-            },
-          );
-        },
-      ),
+                  );
+                },
+              ),
+            ),
     );
   }
 }

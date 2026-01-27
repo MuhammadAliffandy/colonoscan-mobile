@@ -28,6 +28,8 @@ class _LoginViewState extends State<LoginView> {
       SharedPreferences prefs = await SharedPreferences.getInstance();
       
       await prefs.setString('token', result['token']);
+
+      await prefs.setString('role', result['user']['role'] ?? 'user');
       
       if (result.containsKey('user')) {
         await prefs.setString('full_name', result['user']['full_name'] ?? 'User');
