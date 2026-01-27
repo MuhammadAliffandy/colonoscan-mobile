@@ -191,18 +191,16 @@ class _DashboardViewState extends State<DashboardView> {
                     if (_analysisResult != null) ...[
                           const SizedBox(height: 10),
                           
-                          // 🔥 1. TAMBAHAN BARU: INTERACTIVE MOOD METER 🔥
-                          // Kita taruh container biar ada background-nya sedikit atau biarkan transparan
+        
                           Container(
-                            padding: const EdgeInsets.symmetric(vertical: 20),
                             child: MesMoodMeter(
                               score: _analysisResult!['prediction'] ?? 0, 
-                              size: 70
+                              size: 60
                             ),
                           ),
-                          
-              
-                 
+                        
+                          _buildPredictionCard(),
+                          const SizedBox(height: 16),
                           _buildFeatureGrid(),
                           const SizedBox(height: 16),
                           _buildChatSection(),
