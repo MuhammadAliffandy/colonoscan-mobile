@@ -55,8 +55,13 @@ class _LoginViewState extends State<LoginView> {
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Icon(Icons.medical_services_outlined, size: 80, color: Color(0xFF667eea)),
-            const SizedBox(height: 20),
+            Image.asset(
+              'assets/images/colonomind-logo-new.png',
+              width: 180,
+              height: 180,
+              fit: BoxFit.cover,
+            ),
+          
             Text(
               "Welcome Back!", 
               textAlign: TextAlign.center,
@@ -79,7 +84,7 @@ class _LoginViewState extends State<LoginView> {
               : ElevatedButton(
                   onPressed: _doLogin,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF667eea),
+                    backgroundColor: const Color.fromARGB(255, 95, 159, 211),
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 16)
                   ),

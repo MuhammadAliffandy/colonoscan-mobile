@@ -76,6 +76,8 @@ flutter:
   assets:
     - assets/images/colon.png
     - assets/images/endoscope.png
+    - assets/images/colonomind-logo.png
+    - assets/images/colonomind-logo-new.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

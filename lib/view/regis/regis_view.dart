@@ -55,7 +55,7 @@ class _RegisterViewState extends State<RegisterView> {
               ? const Center(child: CircularProgressIndicator())
               : ElevatedButton(
                   onPressed: _doRegister,
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF667eea), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 16)),
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color.fromARGB(255, 95, 159, 211), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 16)),
                   child: const Text("REGISTER"),
                 ),
           ],
