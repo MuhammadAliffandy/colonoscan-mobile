@@ -13,7 +13,6 @@ import '../settings/settings_view.dart';
 import '../../api.dart';
 import '../../components/mes_mood/mes_mood_meter.dart';
 
-
 class DashboardView extends StatefulWidget {
   const DashboardView({super.key});
 
@@ -55,8 +54,8 @@ class _DashboardViewState extends State<DashboardView> {
       File processed = await preprocessImage(original);
 
       setState(() {
-        _originalImage = original; // 1. Simpan Original untuk Upload
-        _image = processed;        // 2. Simpan Processed untuk Tampilan UI
+        _originalImage = original; 
+        _image = processed;        
         
         _analysisResult = null;
         _chatMessages.clear();
@@ -90,23 +89,30 @@ class _DashboardViewState extends State<DashboardView> {
   }
 
   Future<void> _analyzeImage() async {
-    if (_originalImage == null) return; // Pakai Original Image
+    if (_originalImage == null) return;
 
     setState(() => _isLoading = true);
 
     try {
-      // Panggil API Service (Cuma 1 Baris!)
       final resultData = await ApiService.predictImage(_originalImage!);
 
-      // Update UI dengan Data Sukses
       setState(() {
         _analysisResult = resultData;
         
         int score = resultData['prediction'];
         String label = resultData['label'] ?? 'Unknown';
+        // Ambil data baru dari backend
+        double confidence = resultData['confidence'] ?? 0.0;
+        bool isReferral = resultData['is_referral'] ?? false;
         
         String msg = "🎉 **Analysis Complete!**\n\nI detected an **MES Score of $score** ($label).";
-        msg += "\n\nThe original image has been saved to your history.";
+        
+        // Logika pesan Chatbot berdasarkan Confidence
+        if (isReferral) {
+           msg += "\n\n⚠️ **Note:** My confidence is ${(confidence * 100).toStringAsFixed(1)}%. This is a complex case, please verify with a clinical expert.";
+        } else {
+           msg += "\n\n✅ **Elite Mode:** Detected with High Confidence (${(confidence * 100).toStringAsFixed(1)}%).";
+        }
 
         _chatMessages.add({
           'role': 'assistant',
@@ -115,8 +121,6 @@ class _DashboardViewState extends State<DashboardView> {
       });
 
     } catch (e) {
-      // Handle Error dari Service
-      // Kita hapus prefix "Exception:" biar rapi
       String errorMsg = e.toString().replaceAll("Exception: ", "");
       _showError(errorMsg);
     } finally {
@@ -124,7 +128,6 @@ class _DashboardViewState extends State<DashboardView> {
     }
   }
 
-  // --- FUNGSI CHAT (VERSI RINGKAS) ---
   Future<void> _sendMessage() async {
     if (_chatController.text.isEmpty) return;
     String userText = _chatController.text;
@@ -137,8 +140,6 @@ class _DashboardViewState extends State<DashboardView> {
 
     try {
       Map<String, dynamic> contextData = _analysisResult ?? {};
-      
-      // Panggil API Service
       String reply = await ApiService.chatWithBot(userText, contextData);
 
       setState(() {
@@ -159,7 +160,6 @@ class _DashboardViewState extends State<DashboardView> {
      if (index == 0) return; 
      if (index == 1) Navigator.push(context, MaterialPageRoute(builder: (_) => HistoryView()));
      if (index == 2) Navigator.push(context, MaterialPageRoute(builder: (_) => SettingsView()));
-     
      if (index == 3 && _userRole == 'admin') {
         Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminUserListView()));
      }
@@ -182,7 +182,7 @@ class _DashboardViewState extends State<DashboardView> {
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
-                    _buildUploadSection(), // UI Lingkaran ada di sini
+                    _buildUploadSection(),
                     if (_isLoading && _analysisResult == null) 
                       const Padding(
                         padding: EdgeInsets.all(40), 
@@ -190,16 +190,13 @@ class _DashboardViewState extends State<DashboardView> {
                       ),
                     if (_analysisResult != null) ...[
                           const SizedBox(height: 10),
-                          
-        
                           Container(
                             child: MesMoodMeter(
                               score: _analysisResult!['prediction'] ?? 0, 
                               size: 60
                             ),
                           ),
-                        
-                          _buildPredictionCard(),
+                          _buildPredictionCard(), // Widget yang diupdate
                           const SizedBox(height: 16),
                           _buildFeatureGrid(),
                           const SizedBox(height: 16),
@@ -233,7 +230,6 @@ class _DashboardViewState extends State<DashboardView> {
     );
   }
 
-  // --- WIDGET HEADER (SAMA) ---
   Widget _buildHeader() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 25),
@@ -259,7 +255,6 @@ class _DashboardViewState extends State<DashboardView> {
     );
   }
 
-  // --- WIDGET UPLOAD SECTION (UI LINGKARAN DIKEMBALIKAN) ---
   Widget _buildUploadSection() {
     return Card(
       elevation: 0,
@@ -269,12 +264,10 @@ class _DashboardViewState extends State<DashboardView> {
         padding: const EdgeInsets.all(20.0),
         child: Column(
           children: [
-            // --- UI LINGKARAN (Endoscopy View) ---
             if (_image != null)
               Stack(
                 alignment: Alignment.topRight,
                 children: [
-                  // Container Background Hitam ala Medis
                   Container(
                     width: double.infinity,
                     height: 250,
@@ -291,10 +284,9 @@ class _DashboardViewState extends State<DashboardView> {
                             BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 5))
                           ]
                         ),
-                        // 🟢 Ganti ClipRRect jadi ClipOval untuk Lingkaran
                         child: ClipOval( 
                           child: Image.file(
-                            _image!, // Tetap tampilkan yang processed (zoom) biar user enak lihatnya
+                            _image!, 
                             height: 220, 
                             width: 220, 
                             fit: BoxFit.cover, 
@@ -303,7 +295,6 @@ class _DashboardViewState extends State<DashboardView> {
                       ),
                     ),
                   ),
-                  // Tombol X
                   IconButton(
                     onPressed: () => setState(() { _image = null; _originalImage = null; }),
                     icon: const CircleAvatar(backgroundColor: Colors.white, child: Icon(Icons.close, color: Colors.red)),
@@ -311,7 +302,6 @@ class _DashboardViewState extends State<DashboardView> {
                 ],
               )
             else
-              // --- TAMPILAN PLACEHOLDER (TAP TO UPLOAD) ---
               GestureDetector(
                 onTap: () => _pickImage(ImageSource.gallery),
                 child: Container(
@@ -335,7 +325,6 @@ class _DashboardViewState extends State<DashboardView> {
             
             const SizedBox(height: 20),
             
-            // TOMBOL PILIHAN
             Row(
               children: [
                 Expanded(child: ElevatedButton.icon(onPressed: () => _pickImage(ImageSource.camera), icon: const Icon(Icons.camera_alt_outlined), label: const Text("Camera"))),
@@ -344,7 +333,6 @@ class _DashboardViewState extends State<DashboardView> {
               ],
             ),
             
-            // TOMBOL START
             if (_image != null && _analysisResult == null && !_isLoading)
               Padding(
                 padding: const EdgeInsets.only(top: 15),
@@ -368,9 +356,15 @@ class _DashboardViewState extends State<DashboardView> {
     );
   }
 
-  // ... (Sisa Widget Helper: _buildPredictionCard, _buildFeatureGrid, _buildChatSection SAMA SAJA) ...
+  // --- UPDATE: PREDICTION CARD DENGAN CONFIDENCE STYLE ---
   Widget _buildPredictionCard() {
     int score = _analysisResult?['prediction'] ?? 0;
+    
+    // Ambil Data Confidence & Status
+    double confidence = (_analysisResult?['confidence'] as num?)?.toDouble() ?? 0.0;
+    bool isReferral = _analysisResult?['is_referral'] ?? false;
+    String statusMsg = _analysisResult?['status'] ?? "Analysis Complete";
+
     Color cardColor; String status; String emoji;
     switch (score) {
       case 0: cardColor = Colors.green; status = "Normal"; emoji = "🟢"; break;
@@ -390,10 +384,79 @@ class _DashboardViewState extends State<DashboardView> {
       ),
       child: Column(
         children: [
+          // Emoji & Score Utama
           Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle), child: Text(emoji, style: const TextStyle(fontSize: 40))),
           const SizedBox(height: 10),
           Text("MES Score: $score", style: GoogleFonts.inter(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white)),
           Text(status, style: GoogleFonts.inter(fontSize: 16, color: Colors.white.withOpacity(0.9), letterSpacing: 0.5)),
+          
+          const SizedBox(height: 25),
+          
+          // --- CONFIDENCE SECTION (New) ---
+          Container(
+            padding: const EdgeInsets.only(top: 20),
+            decoration: BoxDecoration(
+              border: Border(top: BorderSide(color: Colors.white.withOpacity(0.3), width: 1))
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text("CONFIDENCE", style: GoogleFonts.inter(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600, letterSpacing: 1.0)),
+                    Text("${(confidence * 100).toStringAsFixed(1)}%", style: GoogleFonts.inter(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                
+                // Animated Progress Bar
+                TweenAnimationBuilder<double>(
+                  tween: Tween<double>(begin: 0, end: confidence),
+                  duration: const Duration(seconds: 1),
+                  curve: Curves.easeOutExpo,
+                  builder: (context, value, _) {
+                    return ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: LinearProgressIndicator(
+                        value: value,
+                        minHeight: 8,
+                        backgroundColor: Colors.black12,
+                        // Warna Bar: Putih kalau High Conf, Kuning kalau Warning
+                        valueColor: AlwaysStoppedAnimation<Color>(isReferral ? Colors.amberAccent : Colors.white),
+                      ),
+                    );
+                  },
+                ),
+                
+                const SizedBox(height: 12),
+                
+                // Status Message Icon + Text
+                Row(
+                  children: [
+                    Icon(
+                      isReferral ? Icons.warning_amber_rounded : Icons.verified_user_outlined, 
+                      color: isReferral ? Colors.amberAccent : Colors.white, 
+                      size: 18
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        statusMsg,
+                        style: GoogleFonts.inter(
+                          color: Colors.white.withOpacity(0.9), 
+                          fontSize: 12, 
+                          fontStyle: FontStyle.italic
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                )
+              ],
+            ),
+          )
         ],
       ),
     );
