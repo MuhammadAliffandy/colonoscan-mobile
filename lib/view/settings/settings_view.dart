@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../login/login_view.dart';
+import '../privacy/privacy_view.dart'; // 1. PASTIKAN IMPORT FILE INI
 
 class SettingsView extends StatefulWidget {
   const SettingsView({super.key});
@@ -86,14 +87,18 @@ class _SettingsViewState extends State<SettingsView> {
             
             const SizedBox(height: 40),
             
-            // --- MENU SETTINGS (Contoh) ---
+            // --- MENU SETTINGS ---
+            
+            // 1. Change Password
             ListTile(
               leading: const Icon(Icons.lock_outline),
               title: const Text("Change Password"),
               trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-              onTap: () {}, // Nanti bisa ditambah fitur ini
+              onTap: () {}, 
             ),
             const Divider(),
+
+            // 2. Language
             ListTile(
               leading: const Icon(Icons.language),
               title: const Text("Language"),
@@ -101,6 +106,23 @@ class _SettingsViewState extends State<SettingsView> {
               onTap: () {},
             ),
             const Divider(),
+
+            // 3. Privacy Policy (BARU DITAMBAHKAN)
+            ListTile(
+              leading: const Icon(Icons.privacy_tip_outlined), // Icon Privacy
+              title: const Text("Privacy Policy"),
+              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+              onTap: () {
+                // Navigasi ke halaman Privacy Policy resmi
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const PrivacyPolicyView()),
+                );
+              },
+            ),
+            const Divider(),
+
+            // 4. App Version
             ListTile(
               leading: const Icon(Icons.info_outline),
               title: const Text("App Version"),
