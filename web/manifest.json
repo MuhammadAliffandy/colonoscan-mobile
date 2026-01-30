@@ -1,6 +1,6 @@
 {
-    "name": "colonoscan",
-    "short_name": "colonoscan",
+    "name": "colonomid",
+    "short_name": "colonomid",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

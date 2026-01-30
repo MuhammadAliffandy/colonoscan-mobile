@@ -1,12 +1,12 @@
-# colonoscan
+# colonomid
 
 A new Flutter project.
 
 ## ⚠️ Testing Build Notice
 
-**Bundle Identifier**: `com.testing.colonoscan`
+**Bundle Identifier**: `com.testing.colonomid`
 
-This build is configured for **TESTING PURPOSES ONLY**. The bundle identifier has been temporarily changed to `com.testing.colonoscan` for TestFlight and testing distributions.
+This build is configured for **TESTING PURPOSES ONLY**. The bundle identifier has been temporarily changed to `com.testing.colonomid` for TestFlight and testing distributions.
 
 **Important**: Once testing is complete:
 1. The bundle identifier will be reverted to the production identifier
