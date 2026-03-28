@@ -28,6 +28,7 @@ class _DashboardViewState extends State<DashboardView> {
   Map<String, dynamic>? _analysisResult;
   final List<Map<String, String>> _chatMessages = [];
   final TextEditingController _chatController = TextEditingController();
+  bool _isFhirExporting = false;
 
   @override
   void initState() {
@@ -128,6 +129,137 @@ class _DashboardViewState extends State<DashboardView> {
     }
   }
 
+  Future<void> _exportToFhir() async {
+    if (_analysisResult == null) return;
+
+    final mesLabel = _analysisResult!['prediction_label'] as String? ??
+        'MES${_analysisResult!['prediction'] ?? 0}';
+    final confidence =
+        (_analysisResult!['confidence'] as num?)?.toDouble() ?? 0.0;
+
+    setState(() => _isFhirExporting = true);
+
+    try {
+      final bundle = await ApiService.exportPredictionToFhir(
+        mesLabel: mesLabel,
+        confidence: confidence,
+      );
+
+      if (!mounted) return;
+
+      // Build a readable summary from the bundle
+      final entries = (bundle['entry'] as List?) ?? [];
+      final resourceSummaries = entries.map((e) {
+        final res = e['resource'] as Map<String, dynamic>;
+        final type = res['resourceType'] ?? 'Unknown';
+        final id = res['id'] ?? '-';
+        final method = (e['request'] as Map?)?['method'] ?? 'PUT';
+        return '$type  •  ${id.toString().substring(0, 8)}…  •  $method';
+      }).toList();
+
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => Container(
+          height: MediaQuery.of(context).size.height * 0.55,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF667eea).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.verified_outlined,
+                        color: Color(0xFF667eea), size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('FHIR Bundle Exported',
+                            style: GoogleFonts.inter(
+                                fontWeight: FontWeight.bold, fontSize: 16)),
+                        Text('Stage 2 Compliant · UUID IDs · PUT method',
+                            style: GoogleFonts.inter(
+                                fontSize: 11, color: Colors.grey.shade500)),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 20),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const Divider(height: 28),
+              Text('Resources in Bundle',
+                  style: GoogleFonts.inter(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black54)),
+              const SizedBox(height: 10),
+              ...resourceSummaries.map((s) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF667eea).withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                            color: const Color(0xFF667eea).withOpacity(0.15)),
+                      ),
+                      child: Text(s,
+                          style: GoogleFonts.inter(
+                              fontSize: 13,
+                              color: const Color(0xFF3d4eac))),
+                    ),
+                  )),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(10)),
+                child: Row(
+                  children: [
+                    const Icon(Icons.check_circle_outline,
+                        color: Colors.green, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Bundle type: ${bundle["type"]} · '  
+                        '${entries.length} resource(s)',
+                        style: GoogleFonts.inter(
+                            fontSize: 12, color: Colors.green.shade800),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    } catch (e) {
+      String errorMsg = e.toString().replaceAll('Exception: ', '');
+      _showError('FHIR Export: $errorMsg');
+    } finally {
+      setState(() => _isFhirExporting = false);
+    }
+  }
+
   Future<void> _sendMessage() async {
     if (_chatController.text.isEmpty) return;
     String userText = _chatController.text;
@@ -196,7 +328,9 @@ class _DashboardViewState extends State<DashboardView> {
                               size: 60
                             ),
                           ),
-                          _buildPredictionCard(), // Widget yang diupdate
+                          _buildPredictionCard(),
+                          const SizedBox(height: 12),
+                          _buildFhirExportButton(),
                           const SizedBox(height: 16),
                           _buildFeatureGrid(),
                           const SizedBox(height: 16),
@@ -493,6 +627,59 @@ class _DashboardViewState extends State<DashboardView> {
           },
         ),
       ],
+    );
+  }
+
+  Widget _buildFhirExportButton() {
+    return GestureDetector(
+      onTap: _isFhirExporting ? null : _exportToFhir,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: _isFhirExporting
+                ? [Colors.grey.shade400, Colors.grey.shade500]
+                : [const Color(0xFF667eea), const Color(0xFF764ba2)],
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+          ),
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: _isFhirExporting
+              ? []
+              : [
+                  BoxShadow(
+                    color: const Color(0xFF667eea).withOpacity(0.35),
+                    blurRadius: 12,
+                    offset: const Offset(0, 5),
+                  )
+                ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (_isFhirExporting)
+              const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2.5, color: Colors.white),
+              )
+            else
+              const Icon(Icons.upload_file_outlined,
+                  color: Colors.white, size: 20),
+            const SizedBox(width: 10),
+            Text(
+              _isFhirExporting ? 'Exporting to FHIR...' : '📋 Export to FHIR',
+              style: GoogleFonts.inter(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

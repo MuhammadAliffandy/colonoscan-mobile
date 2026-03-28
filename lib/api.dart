@@ -148,13 +148,87 @@ class ApiService {
 
     final response = await http.get(
       Uri.parse('$baseUrl/admin/users/$userId/history'),
-      headers: {"Authorization": "Bearer $token"},
+      headers: {
+        "Authorization": "Bearer $token",
+      },
     );
 
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     }
     return [];
+  }
+
+  // ────────────────────────────────────────────────────────────
+  // SMART on FHIR — Clinical Export
+  // Uses the app JWT (Bearer token) as auth — no OAuth2 needed.
+  // ────────────────────────────────────────────────────────────
+
+  /// Returns the demo FHIR R4 transaction Bundle from the server.
+  /// Useful for verifying Stage 2 compliance (UUID IDs + PUT method).
+  static Future<Map<String, dynamic>> getFhirBundle() async {
+    String? token = await _getToken();
+    if (token == null) throw Exception("Not logged in. Please login first.");
+
+    final response = await http.get(
+      Uri.parse('$baseUrl/smart/fhir/bundle'),
+      headers: {
+        "Authorization": "Bearer $token",
+        "Accept": "application/fhir+json",
+      },
+    ).timeout(const Duration(seconds: 30));
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+    throw Exception("FHIR bundle fetch failed: ${response.statusCode}");
+  }
+
+  /// Exports a colonoscopy prediction result as a clinical FHIR R4 Bundle.
+  ///
+  /// [mesLabel]   : MES classification label e.g. "MES2"
+  /// [confidence] : Model confidence score 0.0–1.0
+  ///
+  /// Returns the full FHIR Bundle as a Map (Patient + Observation + DiagnosticReport).
+  /// All resource IDs are UUID4, all requests use PUT — Stage 2 compliant.
+  static Future<Map<String, dynamic>> exportPredictionToFhir({
+    required String mesLabel,
+    required double confidence,
+  }) async {
+    String? token = await _getToken();
+    if (token == null) throw Exception("Not logged in. Please login first.");
+
+    // Normalise MES label: accept "MES2", "2", etc.
+    String mes = mesLabel.toUpperCase().startsWith("MES")
+        ? mesLabel.toUpperCase()
+        : "MES${mesLabel.replaceAll(RegExp(r'[^0-3]'), '0')}";
+
+    // Clamp confidence to [0.0, 1.0]
+    double conf = confidence.clamp(0.0, 1.0);
+
+    final uri = Uri.parse(
+      '$baseUrl/smart/fhir/bundle/prediction?mes=$mes&conf=${conf.toStringAsFixed(4)}',
+    );
+
+    final response = await http.get(
+      uri,
+      headers: {
+        "Authorization": "Bearer $token",
+        "Accept": "application/fhir+json",
+      },
+    ).timeout(const Duration(seconds: 30));
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+
+    // Parse server error if available
+    try {
+      final err = jsonDecode(response.body);
+      throw Exception(err['message'] ?? "FHIR export failed");
+    } catch (_) {
+      throw Exception("FHIR export failed: ${response.statusCode}");
+    }
   }
 
 }
